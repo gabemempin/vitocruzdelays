@@ -174,14 +174,11 @@ def check_announcements(state):
     hour, minute = now.hour, now.minute
     is_weekday = now.weekday() < 5  # Monday to Friday
 
-    # Opening: 4:30 AM weekdays, 5:00 AM weekends (within a 20-min window)
-    opening_hour = 4 if is_weekday else 5
-    opening_minute = 30 if is_weekday else 0
-    is_opening_window = (hour == opening_hour and opening_minute <= minute < opening_minute + 20)
+    # Opening: 4:00 AM to 6:00 AM
+    is_opening_window = (4 <= hour < 6)
 
-    # Winding down: 10:00 PM weekdays, 9:00 PM weekends (30 min before last train)
-    closing_hour = 22 if is_weekday else 21
-    is_closing_window = (hour == closing_hour and 0 <= minute < 20)
+    # Closing: 9:00 PM to 10:30 PM
+    is_closing_window = (hour == 21 or (hour == 22 and minute < 30))
 
     today_str = now.strftime("%Y-%m-%d")
 
