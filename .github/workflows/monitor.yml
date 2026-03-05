@@ -1,0 +1,47 @@
+name: Vito Cruz Delay Monitor
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"  # Every 20 minutes
+  workflow_dispatch:          # Allow manual trigger from GitHub UI
+
+jobs:
+  check-delays:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore state cache
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: vito-cruz-state-${{ github.run_id }}
+          restore-keys: |
+            vito-cruz-state-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Check delays
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python monitor.py
+
+      - name: Save state cache
+        if: always()
+        uses: actions/cache@v4
+        with:
+          path: state.json
+          key: vito-cruz-state-${{ github.run_id }}
