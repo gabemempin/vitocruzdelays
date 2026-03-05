@@ -3,10 +3,40 @@ from bs4 import BeautifulSoup
 import os
 import json
 import re
+import random
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 PHT = ZoneInfo("Asia/Manila")
+
+OPENING_MESSAGES = [
+    "🚃 Good morning! LRT-1 Vito Cruz is now open. Stay sharp and have a safe commute!",
+    "🌅 Rise and ride, commuters! Vito Cruz station is open and trains are running. Have a great one!",
+    "🟢 LRT-1 is open! Vito Cruz station is ready for your morning commute. Stay safe out there!",
+    "Good morning! 🚃 Vito Cruz is up and running. Another day, another commute. You've got this!",
+    "🚃 Trains are rolling! LRT-1 Vito Cruz is now open. Have a safe and smooth commute today!",
+    "🚃 Morning, Vito Cruz! LRT-1 is now open and ready to roll. Safe commute today!",
+    "🟢 Good morning! Trains are running at Vito Cruz. Let's make it a smooth one today!",
+]
+
+CLOSING_MESSAGES = [
+    "🌙 LRT-1 is closing in 30 minutes. If you're still out, now's the time to head to Vito Cruz!",
+    "⏰ Wrapping up soon! LRT-1 closes in 30 minutes. Make your way to the station while you still can.",
+    "🌙 Almost done for the night! LRT-1 Vito Cruz will be closing soon. Catch your last train home!",
+    "⚠️ 30 minutes left! LRT-1 is winding down for the night. Don't miss your last ride home from Vito Cruz.",
+    "🌙 Night owls, heads up! LRT-1 closes in 30 minutes. Get to Vito Cruz before the last train leaves!",
+    "🌙 PSA: LRT-1 closes in 30 minutes! Time to wrap up and head to Vito Cruz for your last ride home.",
+    "⏰ Last stretch! LRT-1 Vito Cruz is closing soon. Don't get stranded, head to the station now!",
+]
+
+
+def get_daily_message(message_list):
+    now = datetime.now(PHT)
+    week_number = now.isocalendar()[1]
+    day_of_week = now.weekday()  # 0 = Monday, 6 = Sunday
+    shuffled = message_list[:]
+    random.Random(week_number).shuffle(shuffled)
+    return shuffled[day_of_week]
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL = "@vitocruzdelays"
@@ -111,8 +141,50 @@ def send_telegram(message):
     print(f"Telegram sent: {message[:80]}...")
 
 
+def is_operating_hours():
+    now = datetime.now(PHT)
+    return 5 <= now.hour < 22  # 5 AM to 10 PM PHT
+
+
+def check_announcements(state):
+    now = datetime.now(PHT)
+    hour, minute = now.hour, now.minute
+    is_weekday = now.weekday() < 5  # Monday to Friday
+
+    # Opening: 4:30 AM weekdays, 5:00 AM weekends (within a 20-min window)
+    opening_hour = 4 if is_weekday else 5
+    opening_minute = 30 if is_weekday else 0
+    is_opening_window = (hour == opening_hour and opening_minute <= minute < opening_minute + 20)
+
+    # Winding down: 10:00 PM weekdays, 9:00 PM weekends (30 min before last train)
+    closing_hour = 22 if is_weekday else 21
+    is_closing_window = (hour == closing_hour and 0 <= minute < 20)
+
+    today_str = now.strftime("%Y-%m-%d")
+
+    if is_opening_window and state.get("last_opening") != today_str:
+        send_telegram(get_daily_message(OPENING_MESSAGES))
+        state["last_opening"] = today_str
+        print("Sent opening message.")
+
+    if is_closing_window and state.get("last_closing") != today_str:
+        send_telegram(get_daily_message(CLOSING_MESSAGES))
+        state["last_closing"] = today_str
+        print("Sent closing message.")
+
+    return state
+
+
 def main():
     print(f"[{datetime.now(PHT).strftime('%Y-%m-%d %H:%M')}] Checking Vito Cruz status...")
+
+    state = load_state()
+    state = check_announcements(state)
+
+    if not is_operating_hours():
+        print("Outside LRT-1 operating hours (5 AM – 10 PM PHT). Skipping delay check.")
+        save_state(state)
+        return
 
     try:
         status = fetch_vito_cruz_status()
@@ -126,7 +198,6 @@ def main():
 
     print(f"Directions: {status['directions']}")
 
-    state = load_state()
     currently_delayed = is_delayed(status["directions"])
     was_delayed = state.get("was_delayed", False)
 
@@ -153,7 +224,8 @@ def main():
     else:
         print(f"No change. Currently delayed: {currently_delayed}")
 
-    save_state({"was_delayed": currently_delayed})
+    state["was_delayed"] = currently_delayed
+    save_state(state)
 
 
 if __name__ == "__main__":
