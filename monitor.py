@@ -4,6 +4,9 @@ import os
 import json
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+PHT = ZoneInfo("Asia/Manila")
 
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL = "@vitocruzdelays"
@@ -65,7 +68,7 @@ def fetch_vito_cruz_status():
                 "station": name,
                 "line": line,
                 "directions": directions,
-                "timestamp": datetime.now().strftime("%I:%M %p"),
+                "timestamp": datetime.now(PHT).strftime("%I:%M %p"),
             }
 
     return None
@@ -109,7 +112,7 @@ def send_telegram(message):
 
 
 def main():
-    print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M')}] Checking Vito Cruz status...")
+    print(f"[{datetime.now(PHT).strftime('%Y-%m-%d %H:%M')}] Checking Vito Cruz status...")
 
     try:
         status = fetch_vito_cruz_status()
