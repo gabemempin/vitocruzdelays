@@ -123,11 +123,25 @@ def is_delayed(directions):
     return False
 
 
+def format_eta(data):
+    if data["status"] == "now":
+        return "Arriving now"
+    elif data["status"] == "soon":
+        return "Arriving soon"
+    elif data["status"] == "unknown":
+        return "Waiting on data"
+    elif data["status"] == "later" and data["minutes"] is not None:
+        return f"{data['minutes']} min away"
+    return "Waiting on data"
+
+
 def format_directions(directions):
     lines = []
     for direction, data in directions.items():
-        emoji = "🔴" if data["status"] in ("unknown", "later") and (data["minutes"] is None or (data["minutes"] or 0) >= DELAY_THRESHOLD_MIN) else "🟢"
-        lines.append(f"{emoji} {direction}: {data['text']}")
+        is_delayed = data["status"] in ("unknown", "later") and (data["minutes"] is None or (data["minutes"] or 0) >= DELAY_THRESHOLD_MIN)
+        emoji = "🔴" if is_delayed else "🟢"
+        label = direction + "bound"
+        lines.append(f"{emoji} {label}: {format_eta(data)}")
     return "\n".join(lines)
 
 
