@@ -38,8 +38,17 @@ def get_daily_message(message_list):
     random.Random(week_number).shuffle(shuffled)
     return shuffled[day_of_week]
 
+
+def format_announcement(message):
+    match = re.search(r'[!.]\s+', message)
+    if match:
+        header = message[:match.start() + 1]
+        body = message[match.end():]
+        return f"<b>{header}</b>\n\n{body}"
+    return message
+
 TELEGRAM_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-CHANNEL = "@vitocruzdelays"
+CHANNEL = os.environ.get("TELEGRAM_CHANNEL", "@vitocruzdelays")
 STATE_FILE = "state.json"
 TARGET_STATION = "Vito Cruz"
 DELAY_THRESHOLD_MIN = 5
@@ -163,12 +172,12 @@ def check_announcements(state):
     today_str = now.strftime("%Y-%m-%d")
 
     if is_opening_window and state.get("last_opening") != today_str:
-        send_telegram(get_daily_message(OPENING_MESSAGES))
+        send_telegram(format_announcement(get_daily_message(OPENING_MESSAGES)))
         state["last_opening"] = today_str
         print("Sent opening message.")
 
     if is_closing_window and state.get("last_closing") != today_str:
-        send_telegram(get_daily_message(CLOSING_MESSAGES))
+        send_telegram(format_announcement(get_daily_message(CLOSING_MESSAGES)))
         state["last_closing"] = today_str
         print("Sent closing message.")
 
