@@ -174,8 +174,11 @@ def check_announcements(state):
     hour, minute = now.hour, now.minute
     is_weekday = now.weekday() < 5  # Monday to Friday
 
-    # Opening: 4:00 AM to 6:00 AM
-    is_opening_window = (4 <= hour < 6)
+    # Opening: 4:30 AM to 6:00 AM weekdays, 5:00 AM to 6:00 AM weekends
+    if is_weekday:
+        is_opening_window = (hour == 4 and minute >= 30) or hour == 5
+    else:
+        is_opening_window = hour == 5
 
     # Closing: 9:00 PM to 10:30 PM
     is_closing_window = (hour == 21 or (hour == 22 and minute < 30))
