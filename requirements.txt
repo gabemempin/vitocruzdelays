@@ -1,2 +1,3 @@
+holidays
+playwright
 requests
-beautifulsoup4
