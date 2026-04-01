@@ -21,6 +21,16 @@ OPENING_MESSAGES = [
     "🚃 Trains are rolling! LRT-1 Vito Cruz is now open. Have a safe and smooth commute today!",
     "🚃 Morning, Vito Cruz! LRT-1 is now open and ready to roll. Safe commute today!",
     "🟢 Good morning! Trains are running at Vito Cruz. Let's make it a smooth one today!",
+    "🚃 LRT-1 Vito Cruz is open! Wishing everyone a safe and stress-free commute this morning.",
+    "☀️ A new day, a new commute. Vito Cruz station is open — ride safe!",
+    "🟢 Doors open at Vito Cruz! Start your morning right and have a great commute.",
+    "🌅 Early risers, your train awaits! LRT-1 Vito Cruz is now open and running.",
+    "🚃 Another morning, another ride. LRT-1 is open at Vito Cruz — make it a good one!",
+    "🟢 Vito Cruz is live! Trains are running — stay safe and enjoy the ride.",
+    "☀️ Good morning from Vito Cruz! LRT-1 is open. Here's to a smooth commute ahead.",
+    "🚃 LRT-1 is running! Whether it's rush hour or a slow start — Vito Cruz is ready for you.",
+    "🌄 Morning commuters, Vito Cruz station is open. Safe travels and good vibes today!",
+    "🟢 Trains are moving at Vito Cruz. Have a safe commute and a great day ahead!",
 ]
 
 CLOSING_MESSAGES = [
@@ -31,6 +41,16 @@ CLOSING_MESSAGES = [
     "🌙 Night owls, heads up! LRT-1 closes in 30 minutes. Get to Vito Cruz before the last train leaves!",
     "🌙 PSA: LRT-1 closes in 30 minutes! Time to wrap up and head to Vito Cruz for your last ride home.",
     "⏰ Last stretch! LRT-1 Vito Cruz is closing soon. Don't get stranded, head to the station now!",
+    "🌙 Reminder: LRT-1 wraps up soon. If you're heading home, now's the time to make your move to Vito Cruz.",
+    "🏠 Start making your way home! LRT-1 closes in 30 minutes — Vito Cruz station is still open.",
+    "⏰ Clock's ticking! About 30 minutes before LRT-1 shuts down for the night. Head to Vito Cruz!",
+    "🌙 The last trains are coming. Don't sleep on it — get to Vito Cruz before LRT-1 calls it a night.",
+    "🚃 LRT-1 is in its final hour. Make sure you're at Vito Cruz before the last train departs!",
+    "⚠️ Friendly reminder: LRT-1 closes in 30 minutes. Wrap up and head to Vito Cruz while you still can.",
+    "🌙 It's almost a wrap for LRT-1 tonight. Catch your ride home — head to Vito Cruz now!",
+    "🏠 Heading home? LRT-1 closes soon. Better get moving to Vito Cruz before the last train!",
+    "⏰ Last trains of the night are near. Don't miss out — Vito Cruz station closes in 30 minutes.",
+    "🌙 LRT-1 is winding down. If home is the destination, now's the time to head to Vito Cruz.",
 ]
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -740,7 +760,7 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
     messages = []
     today_string = now.strftime("%Y-%m-%d")
     opening_end = add_minutes_to_time(schedule["first_train"], 59)
-    closing_end = add_minutes_to_time(schedule["closing_announcement"], 19)
+    closing_end = add_minutes_to_time(schedule["closing_announcement"], 44)
 
     if within_window(now, schedule["first_train"], opening_end) and state.get("last_opening") != today_string:
         messages.append(format_announcement(get_daily_message(OPENING_MESSAGES)))
