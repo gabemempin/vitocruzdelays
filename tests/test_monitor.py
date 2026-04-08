@@ -98,9 +98,9 @@ class MonitorTests(unittest.TestCase):
             schedule = monitor.get_base_service_schedule(date(2026, 6, 12))
         self.assertEqual(schedule["first_train"], monitor.WEEKEND_OR_HOLIDAY_SERVICE["first_train"])
 
-    def test_classify_x_vito_cruz_crowd_alert(self):
+    def test_classify_x_vito_cruz_crowd_alert_high(self):
         kind = monitor.classify_x_post({"text": "High passenger volume at Vito Cruz Station. Please expect longer queues."})
-        self.assertEqual(kind, "crowd_alert")
+        self.assertEqual(kind, "crowd_alert_high")
 
     def test_classify_x_other_station_crowd_ignored(self):
         kind = monitor.classify_x_post({"text": "High passenger volume at EDSA Station. Please expect longer queues."})
@@ -118,7 +118,7 @@ class MonitorTests(unittest.TestCase):
         raw_item = monitor.parse_rss_feed(SAMPLE_RSS_XML)[0]
         rss_item = monitor.normalize_rss_item(raw_item)
         state = monitor.STATE_DEFAULTS.copy()
-        messages = monitor.process_rss_items(state, [rss_item])
+        messages = monitor.process_rss_items(state, [rss_item], date(2026, 3, 17))
         self.assertEqual(messages, [])
         self.assertTrue(state["rss_bootstrapped"])
         self.assertIn(rss_item["source_id"], state["posted_item_ids"])
@@ -146,6 +146,165 @@ class MonitorTests(unittest.TestCase):
         schedule = {"name": "closed", "closed": True, "reason": "Test", "override": None}
         messages = monitor.check_announcements(state, datetime(2026, 4, 3, 21, 0, tzinfo=monitor.PHT), schedule)
         self.assertEqual(messages, [])
+
+    def test_classify_x_moderate_volume_crowd_alert(self):
+        kind = monitor.classify_x_post({"text": "Vito Cruz Station is experiencing moderate volume of passengers."})
+        self.assertEqual(kind, "crowd_alert_moderate")
+
+    def test_classify_x_high_volume_of_passengers(self):
+        kind = monitor.classify_x_post({"text": "There is a high volume of passengers at Vito Cruz."})
+        self.assertEqual(kind, "crowd_alert_high")
+
+    def test_opening_message_includes_train_times(self):
+        schedule = {
+            "first_train": monitor.WEEKDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKDAY_SERVICE["last_train"],
+            "override": None,
+        }
+        msg = monitor.format_opening_message("🚃 Good morning! LRT-1 is open.", schedule)
+        self.assertIn("04:30", msg)
+        self.assertIn("22:45", msg)
+
+    def test_closing_announcement_window_ends_before_last_train_weekday(self):
+        from datetime import time as time_type
+        closing = monitor.WEEKDAY_SERVICE["closing_announcement"]
+        last = monitor.WEEKDAY_SERVICE["last_train"]
+        window_end = monitor.add_minutes_to_time(closing, 44)
+        self.assertLess(window_end, last)
+
+    def test_closing_announcement_window_ends_before_last_train_weekend(self):
+        closing = monitor.WEEKEND_OR_HOLIDAY_SERVICE["closing_announcement"]
+        last = monitor.WEEKEND_OR_HOLIDAY_SERVICE["last_train"]
+        window_end = monitor.add_minutes_to_time(closing, 44)
+        self.assertLess(window_end, last)
+
+    def test_future_override_uses_preview_format(self):
+        raw_item = monitor.parse_rss_feed(SAMPLE_RSS_XML)[0]
+        rss_item = monitor.normalize_rss_item(raw_item)
+        state = monitor.STATE_DEFAULTS.copy()
+        state["rss_bootstrapped"] = True
+        # today is before all overrides in the test fixture (closure Apr 2–5, hours Mar 30–Apr 1)
+        messages = monitor.process_rss_items(state, [rss_item], date(2026, 3, 17))
+        self.assertTrue(len(messages) > 0)
+        self.assertTrue(any("advisory" in m for m in messages))
+
+    def test_disruption_update_while_active(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        state["x_bootstrapped"] = True
+        state["active_disruption"] = "x:111"
+        update_item = {
+            "source": "x",
+            "source_id": "x:222",
+            "published_at": datetime(2026, 4, 7, 10, 0, tzinfo=monitor.PHT),
+            "url": "https://x.com/officialLRT1/status/222",
+            "text": "LRT-1 trains are experiencing delays due to a technical issue.",
+            "kind": "disruption_start",
+            "title": None,
+            "effective_window": None,
+        }
+        messages = monitor.process_x_items(state, [update_item])
+        self.assertEqual(len(messages), 1)
+        self.assertIn("update", messages[0])
+        self.assertEqual(state["active_disruption"], "x:111")
+
+    def test_resume_message_after_override_day(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        state["last_override_date"] = "2026-04-06"
+        schedule = {
+            "name": "weekday",
+            "closed": False,
+            "override": None,
+            "first_train": monitor.WEEKDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKDAY_SERVICE["last_train"],
+            "closing_announcement": monitor.WEEKDAY_SERVICE["closing_announcement"],
+        }
+        now = datetime(2026, 4, 7, 5, 0, tzinfo=monitor.PHT)
+        messages = monitor.check_announcements(state, now, schedule)
+        self.assertTrue(any("regular hours" in m for m in messages))
+
+
+    def test_tomorrow_note_on_weekday_to_weekend(self):
+        # Friday → Saturday: note should appear
+        friday = date(2026, 4, 10)  # a Friday
+        saturday = date(2026, 4, 11)
+        state = monitor.STATE_DEFAULTS.copy()
+        tomorrow_sched = monitor.get_service_schedule(
+            datetime.combine(saturday, datetime.min.time()).replace(tzinfo=monitor.PHT), state
+        )
+        note = monitor.format_tomorrow_schedule_note(saturday, tomorrow_sched)
+        self.assertIsNotNone(note)
+        self.assertIn("Saturday", note)
+
+    def test_tomorrow_note_absent_on_weekday_to_weekday(self):
+        # Monday → Tuesday with no overrides: no note
+        tuesday = date(2026, 4, 14)
+        state = monitor.STATE_DEFAULTS.copy()
+        tomorrow_sched = monitor.get_service_schedule(
+            datetime.combine(tuesday, datetime.min.time()).replace(tzinfo=monitor.PHT), state
+        )
+        with patch("monitor.is_public_holiday", return_value=False):
+            note = monitor.format_tomorrow_schedule_note(tuesday, tomorrow_sched)
+        self.assertIsNone(note)
+
+    def test_weekly_outlook_skips_on_non_monday(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        now = datetime(2026, 4, 7, 5, 0, tzinfo=monitor.PHT)  # Tuesday
+        result = monitor.format_weekly_outlook(now, state)
+        self.assertIsNone(result)
+
+    def test_weekly_outlook_skips_on_regular_week(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        # A Monday with no holidays and no overrides
+        now = datetime(2026, 4, 13, 5, 0, tzinfo=monitor.PHT)  # Monday
+        with patch("monitor.is_public_holiday", return_value=False):
+            result = monitor.format_weekly_outlook(now, state)
+        self.assertIsNone(result)
+
+    def test_weekly_outlook_fires_on_monday_with_holiday(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        now = datetime(2026, 4, 13, 5, 0, tzinfo=monitor.PHT)  # Monday
+        # Make Thursday a public holiday
+        def mock_holiday(d):
+            return d == date(2026, 4, 16)
+        with patch("monitor.is_public_holiday", side_effect=mock_holiday):
+            result = monitor.format_weekly_outlook(now, state)
+        self.assertIsNotNone(result)
+        self.assertIn("Thursday", result)
+
+    def test_holiday_reminder_fires_night_before_holiday(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        # Sunday night before a Monday public holiday
+        now = datetime(2026, 4, 12, 19, 0, tzinfo=monitor.PHT)
+        schedule = {
+            "name": "weekend_or_holiday",
+            "closed": False,
+            "override": None,
+            "first_train": monitor.WEEKEND_OR_HOLIDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKEND_OR_HOLIDAY_SERVICE["last_train"],
+            "closing_announcement": monitor.WEEKEND_OR_HOLIDAY_SERVICE["closing_announcement"],
+        }
+        def mock_holiday(d):
+            return d == date(2026, 4, 13)  # tomorrow is a holiday
+        with patch("monitor.is_public_holiday", side_effect=mock_holiday):
+            messages = monitor.check_announcements(state, now, schedule)
+        self.assertTrue(any("Heads up for tomorrow" in m for m in messages))
+        self.assertEqual(state["last_holiday_reminder"], "2026-04-12")
+
+    def test_holiday_reminder_not_fired_for_regular_weekend(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        # Friday evening — tomorrow is Saturday (regular weekend, not a holiday)
+        now = datetime(2026, 4, 10, 19, 0, tzinfo=monitor.PHT)
+        schedule = {
+            "name": "weekday",
+            "closed": False,
+            "override": None,
+            "first_train": monitor.WEEKDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKDAY_SERVICE["last_train"],
+            "closing_announcement": monitor.WEEKDAY_SERVICE["closing_announcement"],
+        }
+        with patch("monitor.is_public_holiday", return_value=False):
+            messages = monitor.check_announcements(state, now, schedule)
+        self.assertFalse(any("Heads up for tomorrow" in m for m in messages))
 
 
 if __name__ == "__main__":

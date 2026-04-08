@@ -22,34 +22,34 @@ OPENING_MESSAGES = [
     "🚃 Morning, Vito Cruz! LRT-1 is now open and ready to roll. Safe commute today!",
     "🟢 Good morning! Trains are running at Vito Cruz. Let's make it a smooth one today!",
     "🚃 LRT-1 Vito Cruz is open! Wishing everyone a safe and stress-free commute this morning.",
-    "☀️ A new day, a new commute. Vito Cruz station is open — ride safe!",
+    "☀️ A new day, a new commute. Vito Cruz station is open. Ride safe!",
     "🟢 Doors open at Vito Cruz! Start your morning right and have a great commute.",
     "🌅 Early risers, your train awaits! LRT-1 Vito Cruz is now open and running.",
-    "🚃 Another morning, another ride. LRT-1 is open at Vito Cruz — make it a good one!",
-    "🟢 Vito Cruz is live! Trains are running — stay safe and enjoy the ride.",
+    "🚃 Another morning, another ride. LRT-1 is open at Vito Cruz. Make it a good one!",
+    "🟢 Vito Cruz is live! Trains are running. Stay safe and enjoy the ride.",
     "☀️ Good morning from Vito Cruz! LRT-1 is open. Here's to a smooth commute ahead.",
-    "🚃 LRT-1 is running! Whether it's rush hour or a slow start — Vito Cruz is ready for you.",
+    "🚃 LRT-1 is running! Whether it's rush hour or a slow start, Vito Cruz is ready for you.",
     "🌄 Morning commuters, Vito Cruz station is open. Safe travels and good vibes today!",
     "🟢 Trains are moving at Vito Cruz. Have a safe commute and a great day ahead!",
 ]
 
 CLOSING_MESSAGES = [
-    "🌙 LRT-1 is closing in 30 minutes. If you're still out, now's the time to head to Vito Cruz!",
-    "⏰ Wrapping up soon! LRT-1 closes in 30 minutes. Make your way to the station while you still can.",
+    "🌙 LRT-1 is closing soon. If you're still out, now's the time to head to Vito Cruz!",
+    "⏰ Wrapping up soon! Last trains are near. Make your way to the station while you still can.",
     "🌙 Almost done for the night! LRT-1 Vito Cruz will be closing soon. Catch your last train home!",
-    "⚠️ 30 minutes left! LRT-1 is winding down for the night. Don't miss your last ride home from Vito Cruz.",
-    "🌙 Night owls, heads up! LRT-1 closes in 30 minutes. Get to Vito Cruz before the last train leaves!",
-    "🌙 PSA: LRT-1 closes in 30 minutes! Time to wrap up and head to Vito Cruz for your last ride home.",
+    "⚠️ LRT-1 is winding down for the night. Don't miss your last ride home from Vito Cruz.",
+    "🌙 Night owls, heads up! Last trains are approaching. Get to Vito Cruz before the final departure!",
+    "🌙 PSA: LRT-1 is closing for the night! Time to wrap up and head to Vito Cruz for your last ride home.",
     "⏰ Last stretch! LRT-1 Vito Cruz is closing soon. Don't get stranded, head to the station now!",
     "🌙 Reminder: LRT-1 wraps up soon. If you're heading home, now's the time to make your move to Vito Cruz.",
-    "🏠 Start making your way home! LRT-1 closes in 30 minutes — Vito Cruz station is still open.",
-    "⏰ Clock's ticking! About 30 minutes before LRT-1 shuts down for the night. Head to Vito Cruz!",
-    "🌙 The last trains are coming. Don't sleep on it — get to Vito Cruz before LRT-1 calls it a night.",
+    "🏠 Start making your way home! Last trains at Vito Cruz are departing soon.",
+    "⏰ Clock's ticking! LRT-1 shuts down for the night soon. Head to Vito Cruz!",
+    "🌙 The last trains are coming. Don't sleep on it. Get to Vito Cruz before LRT-1 calls it a night.",
     "🚃 LRT-1 is in its final hour. Make sure you're at Vito Cruz before the last train departs!",
-    "⚠️ Friendly reminder: LRT-1 closes in 30 minutes. Wrap up and head to Vito Cruz while you still can.",
-    "🌙 It's almost a wrap for LRT-1 tonight. Catch your ride home — head to Vito Cruz now!",
+    "⚠️ Friendly reminder: LRT-1 is closing soon. Wrap up and head to Vito Cruz while you still can.",
+    "🌙 It's almost a wrap for LRT-1 tonight. Catch your ride home and head to Vito Cruz now!",
     "🏠 Heading home? LRT-1 closes soon. Better get moving to Vito Cruz before the last train!",
-    "⏰ Last trains of the night are near. Don't miss out — Vito Cruz station closes in 30 minutes.",
+    "⏰ Last trains of the night are near. Don't miss out, head to Vito Cruz station now.",
     "🌙 LRT-1 is winding down. If home is the destination, now's the time to head to Vito Cruz.",
 ]
 
@@ -77,6 +77,9 @@ STATE_DEFAULTS = {
     "last_seen_x_post_id": None,
     "last_opening": None,
     "last_closing": None,
+    "last_override_date": None,
+    "last_holiday_reminder": None,
+    "last_weekly_outlook": None,
     "rss_bootstrapped": False,
     "x_bootstrapped": False,
 }
@@ -84,18 +87,21 @@ STATE_DEFAULTS = {
 POSTED_ITEM_LIMIT = 250
 X_POST_LIMIT = 8
 
+HOLIDAY_REMINDER_START = time(18, 0)
+HOLIDAY_REMINDER_END = time(20, 0)
+
 WEEKDAY_SERVICE = {
     "name": "weekday",
     "first_train": time(4, 30),
     "last_train": time(22, 45),
-    "closing_announcement": time(22, 0),
+    "closing_announcement": time(21, 30),  # 75 min before last train; 44-min window → fires 21:30–22:14
 }
 
 WEEKEND_OR_HOLIDAY_SERVICE = {
     "name": "weekend_or_holiday",
     "first_train": time(5, 0),
     "last_train": time(21, 45),
-    "closing_announcement": time(21, 0),
+    "closing_announcement": time(20, 45),  # 60 min before last train; 44-min window → fires 20:45–21:29
 }
 
 RSS_GATE_KEYWORDS = (
@@ -142,10 +148,10 @@ X_DISRUPTION_KEYWORDS = (
     "operations are delayed",
 )
 
-X_CROWD_KEYWORDS = (
+X_CROWD_HEAVY_KEYWORDS = (
     "high passenger volume",
     "heavy passenger volume",
-    "passenger volume",
+    "high volume",
     "crowding",
     "crowded",
     "long queue",
@@ -155,6 +161,15 @@ X_CROWD_KEYWORDS = (
     "buildup",
     "heavy foot traffic",
     "station is full",
+)
+
+X_CROWD_MODERATE_KEYWORDS = (
+    "volume of passengers",
+    "moderate volume",
+    "moderate passenger",
+    "passenger load",
+    "passenger volume",
+    "foot traffic",
 )
 
 MONTH_PATTERN = (
@@ -184,9 +199,8 @@ def get_daily_message(message_list: list[str]) -> str:
     now = datetime.now(PHT)
     week_number = now.isocalendar()[1]
     day_of_week = now.weekday()
-    shuffled = message_list[:]
-    random.Random(week_number).shuffle(shuffled)
-    return shuffled[day_of_week]
+    index = (week_number * 7 + day_of_week) % len(message_list)
+    return message_list[index]
 
 
 def format_announcement(message: str) -> str:
@@ -196,6 +210,17 @@ def format_announcement(message: str) -> str:
         body = message[match.end() :]
         return f"<b>{header}</b>\n\n{body}"
     return message
+
+
+def format_opening_message(message: str, schedule: dict[str, Any]) -> str:
+    formatted = format_announcement(message)
+    first = schedule["first_train"].strftime("%H:%M")
+    last = schedule["last_train"].strftime("%H:%M")
+    if schedule.get("override"):
+        time_line = f"⚠️ Adjusted hours today. First train: {first} · Last train: {last}"
+    else:
+        time_line = f"🕐 First train: {first} · Last train: {last}"
+    return f"{formatted}\n\n{time_line}"
 
 
 def log_event(event: str, **payload: Any) -> None:
@@ -609,8 +634,11 @@ def classify_x_post(raw_post: dict[str, Any]) -> str | None:
     if not normalized:
         return None
 
-    if TARGET_STATION_NORMALIZED in normalized and contains_normalized_keyword(normalized, X_CROWD_KEYWORDS):
-        return "crowd_alert"
+    if TARGET_STATION_NORMALIZED in normalized:
+        if contains_normalized_keyword(normalized, X_CROWD_HEAVY_KEYWORDS):
+            return "crowd_alert_high"
+        if contains_normalized_keyword(normalized, X_CROWD_MODERATE_KEYWORDS):
+            return "crowd_alert_moderate"
     if contains_normalized_keyword(normalized, X_CLEAR_KEYWORDS):
         return "disruption_clear"
     if contains_normalized_keyword(normalized, X_DISRUPTION_KEYWORDS):
@@ -748,26 +776,118 @@ def get_service_schedule(now: datetime, state: dict[str, Any]) -> dict[str, Any]
     return schedule
 
 
+def get_tomorrow_schedule(now: datetime, state: dict[str, Any]) -> dict[str, Any]:
+    tomorrow_dt = datetime.combine(now.date() + timedelta(days=1), time(12, 0), tzinfo=PHT)
+    return get_service_schedule(tomorrow_dt, state)
+
+
+def format_tomorrow_schedule_note(tomorrow_date: date, tomorrow_schedule: dict[str, Any]) -> str | None:
+    day_name = tomorrow_date.strftime("%A")
+    if tomorrow_schedule.get("closed"):
+        reason = tomorrow_schedule.get("reason") or "no service"
+        return f"📅 Tomorrow ({day_name}): LRT-1 is <b>suspended</b>. {html.escape(reason)}"
+    if tomorrow_schedule.get("override"):
+        first = tomorrow_schedule["first_train"].strftime("%H:%M")
+        last = tomorrow_schedule["last_train"].strftime("%H:%M")
+        return f"📅 Tomorrow ({day_name}): Adjusted hours. First train: {first} · Last train: {last}"
+    if tomorrow_date.weekday() >= 5 or is_public_holiday(tomorrow_date):
+        first = tomorrow_schedule["first_train"].strftime("%H:%M")
+        last = tomorrow_schedule["last_train"].strftime("%H:%M")
+        return f"📅 Tomorrow ({day_name}): Holiday/weekend hours. First train: {first} · Last train: {last}"
+    return None
+
+
+def format_holiday_reminder(tomorrow_date: date, tomorrow_schedule: dict[str, Any]) -> str:
+    day_str = tomorrow_date.strftime("%A, %B %-d")
+    if tomorrow_schedule.get("closed"):
+        reason = html.escape(tomorrow_schedule.get("reason") or "")
+        body = f"<b>{day_str}</b>: LRT-1 will be <b>suspended</b>."
+        if reason:
+            body += f" {reason}"
+    elif tomorrow_schedule.get("override"):
+        first = tomorrow_schedule["first_train"].strftime("%H:%M")
+        last = tomorrow_schedule["last_train"].strftime("%H:%M")
+        body = f"<b>{day_str}</b>: LRT-1 will run on adjusted hours.\n🕐 First train: {first} · Last train: {last}"
+    else:
+        first = tomorrow_schedule["first_train"].strftime("%H:%M")
+        last = tomorrow_schedule["last_train"].strftime("%H:%M")
+        body = f"<b>{day_str}</b>: LRT-1 will run on holiday hours.\n🕐 First train: {first} · Last train: {last}"
+    return f"📅 <b>Heads up for tomorrow</b>\n\n{body}"
+
+
+def format_weekly_outlook(now: datetime, state: dict[str, Any]) -> str | None:
+    if now.weekday() != 0:
+        return None
+    today = now.date()
+    week_days = [today + timedelta(days=i) for i in range(7)]
+    lines = []
+    for d in week_days:
+        sched = get_service_schedule(datetime.combine(d, time(12, 0), tzinfo=PHT), state)
+        is_regular_weekend = d.weekday() >= 5 and not sched.get("override") and not sched.get("closed")
+        if is_regular_weekend:
+            continue
+        if sched.get("closed"):
+            reason = html.escape(sched.get("reason") or "no service")
+            lines.append(f"• {d.strftime('%A')}: Suspended — {reason}")
+        elif sched.get("override"):
+            first = sched["first_train"].strftime("%H:%M")
+            last = sched["last_train"].strftime("%H:%M")
+            lines.append(f"• {d.strftime('%A')}: Adjusted hours ({first}–{last})")
+        elif is_public_holiday(d):
+            first = sched["first_train"].strftime("%H:%M")
+            last = sched["last_train"].strftime("%H:%M")
+            lines.append(f"• {d.strftime('%A')}: Holiday hours ({first}–{last})")
+    if not lines:
+        return None
+    return "📋 <b>This week's LRT-1 schedule</b>\n\n" + "\n".join(lines)
+
+
 def within_window(now: datetime, start_time: time, end_time: time) -> bool:
     current_time = now.time()
     return start_time <= current_time <= end_time
 
 
 def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str, Any]) -> list[str]:
+    today_string = now.strftime("%Y-%m-%d")
+    yesterday_string = (now.date() - timedelta(days=1)).strftime("%Y-%m-%d")
+
     if schedule.get("closed"):
+        state["last_override_date"] = today_string
         return []
 
+    if schedule.get("override"):
+        state["last_override_date"] = today_string
+
     messages = []
-    today_string = now.strftime("%Y-%m-%d")
     opening_end = add_minutes_to_time(schedule["first_train"], 59)
     closing_end = add_minutes_to_time(schedule["closing_announcement"], 44)
 
     if within_window(now, schedule["first_train"], opening_end) and state.get("last_opening") != today_string:
-        messages.append(format_announcement(get_daily_message(OPENING_MESSAGES)))
+        if state.get("last_override_date") == yesterday_string and not schedule.get("override"):
+            first = schedule["first_train"].strftime("%H:%M")
+            last = schedule["last_train"].strftime("%H:%M")
+            messages.append(f"✅ <b>LRT-1 is back to regular hours today.</b>\n\nFirst train: {first} · Last train: {last}")
+        outlook = format_weekly_outlook(now, state)
+        if outlook:
+            messages.append(outlook)
+        messages.append(format_opening_message(get_daily_message(OPENING_MESSAGES), schedule))
         state["last_opening"] = today_string
 
+    if within_window(now, HOLIDAY_REMINDER_START, HOLIDAY_REMINDER_END) and state.get("last_holiday_reminder") != today_string:
+        tomorrow_date = now.date() + timedelta(days=1)
+        tomorrow_schedule = get_tomorrow_schedule(now, state)
+        if tomorrow_schedule.get("closed") or tomorrow_schedule.get("override") or is_public_holiday(tomorrow_date):
+            messages.append(format_holiday_reminder(tomorrow_date, tomorrow_schedule))
+            state["last_holiday_reminder"] = today_string
+
     if within_window(now, schedule["closing_announcement"], closing_end) and state.get("last_closing") != today_string:
-        messages.append(format_announcement(get_daily_message(CLOSING_MESSAGES)))
+        closing_msg = format_announcement(get_daily_message(CLOSING_MESSAGES))
+        tomorrow_date = now.date() + timedelta(days=1)
+        tomorrow_schedule = get_tomorrow_schedule(now, state)
+        note = format_tomorrow_schedule_note(tomorrow_date, tomorrow_schedule)
+        if note:
+            closing_msg += f"\n\n{note}"
+        messages.append(closing_msg)
         state["last_closing"] = today_string
 
     return messages
@@ -790,11 +910,42 @@ def format_rss_message(item: dict[str, Any]) -> str:
     )
 
 
+def format_override_preview_message(item: dict[str, Any], override: dict[str, Any]) -> str:
+    start = string_to_date(override.get("start_date"))
+    end = string_to_date(override.get("end_date"))
+    if start and end and start == end:
+        date_str = start.strftime("%A, %B %-d")
+    elif start and end:
+        date_str = f"{start.strftime('%B %-d')}–{end.strftime('%B %-d')}"
+    else:
+        date_str = "upcoming dates"
+
+    if override.get("kind") == "closed":
+        heading = "🚫 <b>LRT-1 temporary closure advisory</b>"
+        reason = html.escape(override.get("reason") or item["title"])
+        body = f"{reason}\n\nLRT-1 will be <b>suspended</b> on {html.escape(date_str)}."
+    else:
+        heading = "📅 <b>Adjusted LRT-1 schedule advisory</b>"
+        first = override.get("first_train") or "—"
+        last = override.get("last_train") or "—"
+        reason = html.escape(override.get("reason") or item["title"])
+        body = f"{reason}\n\nLRT-1 will operate on adjusted hours on {html.escape(date_str)}.\n🕐 First train: {first} · Last train: {last}"
+
+    return (
+        f"{heading}\n\n"
+        f"{body}\n\n"
+        f"🔗 {source_link(item['url'], 'View LRMC post')}\n"
+        f"⏰ Posted {format_timestamp(item['published_at'])}"
+    )
+
+
 def format_x_message(item: dict[str, Any]) -> str:
     title = {
         "disruption_start": "🚨 <b>LRT-1 disruption alert</b>",
+        "disruption_update": "🔄 <b>LRT-1 disruption update</b>",
         "disruption_clear": "✅ <b>LRT-1 operations normalized</b>",
-        "crowd_alert": "⚠️ <b>Vito Cruz crowd alert</b>",
+        "crowd_alert_high": "🚨 <b>Vito Cruz crowd alert</b>",
+        "crowd_alert_moderate": "⚠️ <b>Vito Cruz crowd update</b>",
     }[item["kind"]]
     text = html.escape(truncate_text(item["text"]))
     return (
@@ -805,7 +956,7 @@ def format_x_message(item: dict[str, Any]) -> str:
     )
 
 
-def process_rss_items(state: dict[str, Any], rss_items: list[dict[str, Any]]) -> list[str]:
+def process_rss_items(state: dict[str, Any], rss_items: list[dict[str, Any]], today: date) -> list[str]:
     if rss_items:
         state["last_seen_rss_item_id"] = rss_items[0]["source_id"]
 
@@ -820,7 +971,15 @@ def process_rss_items(state: dict[str, Any], rss_items: list[dict[str, Any]]) ->
         if has_posted_item(state, item["source_id"]):
             continue
         remember_posted_item(state, item["source_id"])
-        messages.append(format_rss_message(item))
+        future_overrides = [
+            o for o in item.get("schedule_overrides", [])
+            if string_to_date(o.get("start_date")) and string_to_date(o.get("start_date")) > today
+        ]
+        if future_overrides:
+            for override in future_overrides:
+                messages.append(format_override_preview_message(item, override))
+        else:
+            messages.append(format_rss_message(item))
     return messages
 
 
@@ -847,13 +1006,16 @@ def process_x_items(state: dict[str, Any], x_items: list[dict[str, Any]]) -> lis
 
         remember_posted_item(state, item["source_id"])
 
-        if item["kind"] == "crowd_alert":
+        if item["kind"] in ("crowd_alert_high", "crowd_alert_moderate"):
             messages.append(format_x_message(item))
             continue
 
         if item["kind"] == "disruption_start":
-            state["active_disruption"] = item["source_id"]
-            messages.append(format_x_message(item))
+            if state.get("active_disruption"):
+                messages.append(format_x_message({**item, "kind": "disruption_update"}))
+            else:
+                state["active_disruption"] = item["source_id"]
+                messages.append(format_x_message(item))
             continue
 
         if item["kind"] == "disruption_clear":
@@ -903,7 +1065,7 @@ def main() -> None:
         log_event("x_failure", error=str(exc))
 
     messages = []
-    messages.extend(process_rss_items(state, rss_items))
+    messages.extend(process_rss_items(state, rss_items, now.date()))
     messages.extend(process_x_items(state, x_items))
     messages.extend(check_announcements(state, now, schedule))
 
