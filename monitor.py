@@ -860,7 +860,7 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
 
     messages = []
     opening_end = add_minutes_to_time(schedule["first_train"], 59)
-    closing_end = add_minutes_to_time(schedule["closing_announcement"], 44)
+    closing_end = add_minutes_to_time(schedule["last_train"], -10)
 
     if within_window(now, schedule["first_train"], opening_end) and state.get("last_opening") != today_string:
         if state.get("last_override_date") == yesterday_string and not schedule.get("override"):
