@@ -53,6 +53,22 @@ CLOSING_MESSAGES = [
     "🌙 LRT-1 is winding down. If home is the destination, now's the time to head to Vito Cruz.",
 ]
 
+MORNING_RUSH_MESSAGES = [
+    "🌅 Morning rush is coming. If you can beat the 7 AM crowd, now is the time to move. Trains are running at Vito Cruz!",
+    "⏱️ Heads up! Peak hours at Vito Cruz run roughly 7:00 to 9:00 AM. Boarding early means a smoother ride and a better morning.",
+    "🚃 Rush hour is around the corner. Trains at Vito Cruz run every 3 to 5 minutes during peak hours, but platforms fill up fast. Plan ahead!",
+    "🌄 The calm before the commute. Morning rush kicks off soon. If you can roll out now, you will thank yourself later.",
+    "🕖 It's almost go time. Morning peak at Vito Cruz is 7:00 to 9:00 AM. An early start means shorter waits and breathing room on the train.",
+]
+
+AFTERNOON_RUSH_MESSAGES = [
+    "🌆 Evening rush is on the way. Vito Cruz gets packed from around 5:30 PM. If you can leave early or stay a little later, it helps.",
+    "🚃 Afternoon peak hours are coming up. Expect heavier crowds at Vito Cruz between 5:30 and 7:30 PM. Patience and positioning go a long way.",
+    "⏰ The after-work crowd is building. Rush hour at Vito Cruz typically runs 5:00 to 8:00 PM, with the thickest crush around 6:00 to 7:30 PM.",
+    "🌇 Wrapping up work soon? The platform fills up fast after 5 PM. Getting to Vito Cruz before 5:30 PM can make the difference between a seat and a squeeze.",
+    "🎒 Late afternoon heads-up: rush hour is arriving at Vito Cruz. Trains run frequently during peak hours, but give yourself extra time for boarding.",
+]
+
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 CHANNEL = os.environ.get("TELEGRAM_CHANNEL", "@vitocruzdelays")
 STATE_FILE = "state.json"
@@ -80,6 +96,8 @@ STATE_DEFAULTS = {
     "last_override_date": None,
     "last_holiday_reminder": None,
     "last_weekly_outlook": None,
+    "last_morning_rush": None,
+    "last_afternoon_rush": None,
     "rss_bootstrapped": False,
     "x_bootstrapped": False,
 }
@@ -89,6 +107,11 @@ X_POST_LIMIT = 8
 
 HOLIDAY_REMINDER_START = time(18, 0)
 HOLIDAY_REMINDER_END = time(20, 0)
+
+MORNING_RUSH_ALERT_START = time(6, 30)
+MORNING_RUSH_ALERT_END = time(7, 0)
+AFTERNOON_RUSH_ALERT_START = time(16, 30)
+AFTERNOON_RUSH_ALERT_END = time(17, 0)
 
 WEEKDAY_SERVICE = {
     "name": "weekday",
@@ -872,6 +895,24 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
             messages.append(outlook)
         messages.append(format_opening_message(get_daily_message(OPENING_MESSAGES), schedule))
         state["last_opening"] = today_string
+
+    is_weekday_non_holiday = now.weekday() < 5 and not is_public_holiday(now.date())
+
+    if (
+        is_weekday_non_holiday
+        and within_window(now, MORNING_RUSH_ALERT_START, MORNING_RUSH_ALERT_END)
+        and state.get("last_morning_rush") != today_string
+    ):
+        messages.append(format_announcement(get_daily_message(MORNING_RUSH_MESSAGES)))
+        state["last_morning_rush"] = today_string
+
+    if (
+        is_weekday_non_holiday
+        and within_window(now, AFTERNOON_RUSH_ALERT_START, AFTERNOON_RUSH_ALERT_END)
+        and state.get("last_afternoon_rush") != today_string
+    ):
+        messages.append(format_announcement(get_daily_message(AFTERNOON_RUSH_MESSAGES)))
+        state["last_afternoon_rush"] = today_string
 
     if within_window(now, HOLIDAY_REMINDER_START, HOLIDAY_REMINDER_END) and state.get("last_holiday_reminder") != today_string:
         tomorrow_date = now.date() + timedelta(days=1)
