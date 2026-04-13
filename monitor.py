@@ -113,6 +113,9 @@ MORNING_RUSH_ALERT_END = time(7, 0)
 AFTERNOON_RUSH_ALERT_START = time(16, 30)
 AFTERNOON_RUSH_ALERT_END = time(17, 0)
 
+TERM_BREAK_START = date(2026, 4, 13)
+TERM_BREAK_END = date(2026, 5, 3)
+
 WEEKDAY_SERVICE = {
     "name": "weekday",
     "first_train": time(4, 30),
@@ -870,6 +873,10 @@ def within_window(now: datetime, start_time: time, end_time: time) -> bool:
     return start_time <= current_time <= end_time
 
 
+def is_term_break(target_date: date) -> bool:
+    return TERM_BREAK_START <= target_date <= TERM_BREAK_END
+
+
 def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str, Any]) -> list[str]:
     today_string = now.strftime("%Y-%m-%d")
     yesterday_string = (now.date() - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -900,6 +907,7 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
 
     if (
         is_weekday_non_holiday
+        and not is_term_break(now.date())
         and within_window(now, MORNING_RUSH_ALERT_START, MORNING_RUSH_ALERT_END)
         and state.get("last_morning_rush") != today_string
     ):
@@ -908,6 +916,7 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
 
     if (
         is_weekday_non_holiday
+        and not is_term_break(now.date())
         and within_window(now, AFTERNOON_RUSH_ALERT_START, AFTERNOON_RUSH_ALERT_END)
         and state.get("last_afternoon_rush") != today_string
     ):
