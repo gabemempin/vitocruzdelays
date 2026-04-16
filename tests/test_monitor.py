@@ -306,6 +306,43 @@ class MonitorTests(unittest.TestCase):
             messages = monitor.check_announcements(state, now, schedule)
         self.assertFalse(any("Heads up for tomorrow" in m for m in messages))
 
+    def test_opening_includes_disruption_notice_when_active(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        state["active_disruption"] = "x:999"
+        schedule = {
+            "name": "weekday",
+            "closed": False,
+            "override": None,
+            "first_train": monitor.WEEKDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKDAY_SERVICE["last_train"],
+            "closing_announcement": monitor.WEEKDAY_SERVICE["closing_announcement"],
+        }
+        now = datetime(2026, 4, 16, 4, 45, tzinfo=monitor.PHT)
+        messages = monitor.check_announcements(state, now, schedule)
+        self.assertTrue(any("disruption" in m.lower() for m in messages))
+        self.assertTrue(any("ongoing" in m.lower() for m in messages))
+
+    def test_opening_no_disruption_notice_when_none(self):
+        state = monitor.STATE_DEFAULTS.copy()
+        state["active_disruption"] = None
+        schedule = {
+            "name": "weekday",
+            "closed": False,
+            "override": None,
+            "first_train": monitor.WEEKDAY_SERVICE["first_train"],
+            "last_train": monitor.WEEKDAY_SERVICE["last_train"],
+            "closing_announcement": monitor.WEEKDAY_SERVICE["closing_announcement"],
+        }
+        now = datetime(2026, 4, 16, 4, 45, tzinfo=monitor.PHT)
+        messages = monitor.check_announcements(state, now, schedule)
+        self.assertFalse(any("may still be ongoing" in m for m in messages))
+
+    def test_format_active_disruption_notice_content(self):
+        notice = monitor.format_active_disruption_notice()
+        self.assertIn("disruption", notice.lower())
+        self.assertIn("officialLRT1", notice)
+        self.assertIn("⚠️", notice)
+
 
 if __name__ == "__main__":
     unittest.main()
