@@ -897,6 +897,8 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
             first = schedule["first_train"].strftime("%H:%M")
             last = schedule["last_train"].strftime("%H:%M")
             messages.append(f"✅ <b>LRT-1 is back to regular hours today.</b>\n\nFirst train: {first} · Last train: {last}")
+        if state.get("active_disruption"):
+            messages.append(format_active_disruption_notice())
         outlook = format_weekly_outlook(now, state)
         if outlook:
             messages.append(outlook)
@@ -945,6 +947,14 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
 
 def source_link(url: str, label: str) -> str:
     return f'<a href="{html.escape(url, quote=True)}">{html.escape(label)}</a>'
+
+
+def format_active_disruption_notice() -> str:
+    return (
+        "⚠️ <b>Service disruption may still be ongoing</b>\n\n"
+        "An LRT-1 disruption was reported and has not yet been resolved. "
+        'Follow <a href="https://x.com/officialLRT1">@officialLRT1</a> for the latest updates.'
+    )
 
 
 def format_rss_message(item: dict[str, Any]) -> str:
