@@ -29,14 +29,14 @@ Everything lives in `monitor.py`. The `main()` function is the entry point and r
 
 1. **Fetch LRMC RSS** (`fetch_lrmc_rss_items`) — pulls from `https://lrmc.ph/feed/`, filters for service-impacting posts using `RSS_GATE_KEYWORDS`, then extracts schedule overrides (closure dates, adjusted hours) via regex parsing of the article body. New items with future overrides get a structured advisory card (`format_override_preview_message`) instead of the raw RSS format.
 
-2. **Fetch X/Twitter posts** (`fetch_x_posts`) — uses Playwright (headless Chromium) to scrape `@officialLRT1`'s public profile. Classifies posts as `disruption_start`, `disruption_update`, `disruption_clear`, `crowd_alert_high`, or `crowd_alert_moderate`. Crowd alerts only fire if Vito Cruz is mentioned by name. If a `disruption_start` arrives while `active_disruption` is already set, it posts as a `disruption_update` without resetting the disruption source.
+2. **Fetch X/Twitter posts** (`fetch_x_posts`) — uses Playwright (headless Chromium) to scrape `@officialLRT1`'s public profile with up to 3 retries (varying viewport). If all retries fail, falls back to Nitter RSS across 4 known instances. Classifies posts as `disruption_start`, `disruption_update`, `disruption_clear`, `flood_alert`, `flood_clear`, `crowd_alert_high`, or `crowd_alert_moderate`. Crowd alerts only fire if Vito Cruz is mentioned by name. If a `disruption_start` arrives while `active_disruption` is already set, it posts as a `disruption_update` without resetting the disruption source. Flood alerts are classified before generic disruptions.
 
 3. **Resolve service schedule** (`get_service_schedule`) — starts from a weekday or weekend/holiday base schedule, then applies any active `schedule_overrides` stored in state. `closed` overrides take priority over `hours` overrides.
 
 4. **Check announcements** (`check_announcements`) — manages all time-based posts:
-   - **Opening window** (`first_train` + 59 min): good morning message with train times; "normal service resumes" prepended if yesterday had an override; Monday weekly outlook if this week has unusual days
+   - **Opening window** (`first_train` + 59 min): good morning message with train times; "normal service resumes" prepended if yesterday had an override; Monday weekly outlook if this week has unusual days; flood safety reminder appended if `active_flood` is set
    - **Holiday reminder window** (18:00–20:00): standalone heads-up if tomorrow is a public holiday or RSS override day (not regular weekends)
-   - **Closing window** (`closing_announcement` to `last_train` − 10 min): good night message with tomorrow's schedule appended if tomorrow is non-standard
+   - **Closing window** (`closing_announcement` to `last_train` − 10 min): good night message with tomorrow's schedule appended if tomorrow is non-standard; flood safety reminder appended if `active_flood` is set
 
 5. **Send to Telegram and save state** — messages are sent via Bot API. State is persisted to `state.json` and cached between GitHub Actions runs using `actions/cache`.
 
@@ -45,6 +45,7 @@ Everything lives in `monitor.py`. The `main()` function is the entry point and r
 The state file is the bot's memory between runs. Key fields:
 - `posted_item_ids` — deduplication list (capped at 250)
 - `active_disruption` — source_id of the ongoing disruption, or null
+- `active_flood` — source_id of an ongoing flood alert, or null; persists until a `flood_clear` tweet is detected
 - `schedule_overrides` — parsed closure/hours overrides from RSS, expire 1 day after their `end_date`
 - `rss_bootstrapped` / `x_bootstrapped` — on first run, all existing items are marked seen without posting (prevents backlog flood)
 - `last_opening` / `last_closing` — date strings to ensure once-per-day announcements
