@@ -50,7 +50,10 @@ jobs:
       - name: Check announcements
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        run: python monitor.py
+        run: |
+          python monitor.py
+          sleep 150
+          python monitor.py --fast
 
       - name: Save state cache
         if: always()

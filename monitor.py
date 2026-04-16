@@ -3,6 +3,8 @@ import json
 import os
 import random
 import re
+import sys
+import time as _time
 import xml.etree.ElementTree as ET
 from datetime import date, datetime, time, timedelta
 from email.utils import parsedate_to_datetime
@@ -145,15 +147,18 @@ RSS_GATE_KEYWORDS = (
 )
 
 X_CLEAR_KEYWORDS = (
-    "operations are now back to normal",
-    "operations are back to normal",
-    "operations normalized",
-    "operations have normalized",
+    "back to normal",
+    "service restored",
     "service has resumed",
     "operations have resumed",
-    "normal operations have resumed",
-    "train service is now normal",
+    "operations resumed",
+    "operations normalized",
+    "operations have normalized",
+    "normal operations",
     "full operations resumed",
+    "train service is now normal",
+    "service is now running normally",
+    "restored to normal",
 )
 
 X_DISRUPTION_KEYWORDS = (
@@ -197,6 +202,37 @@ X_CROWD_MODERATE_KEYWORDS = (
     "passenger volume",
     "foot traffic",
 )
+
+PARTIAL_DISRUPTION_SIGNALS = (
+    "partial",
+    "limited operations between",
+    "shortened route",
+    "provisional service",
+    "running only between",
+    "operating between",
+    "not stopping at",
+    "bypassing",
+    "no service at",
+    "temporarily closed at",
+    "suspended at",
+)
+
+NITTER_INSTANCES = (
+    "https://nitter.privacydev.net",
+    "https://nitter.poast.org",
+    "https://nitter.cz",
+    "https://nitter.1d4.us",
+)
+
+SEGMENT_RE = re.compile(
+    r"(?:running only |operating )?between\s+(.+?)\s+station\s+(?:and|to|-)\s+(.+?)\s+station",
+    re.IGNORECASE,
+)
+AFFECTED_STATIONS_RE = re.compile(
+    r"(?:not stopping at|bypassing|no service at|temporarily closed at|suspended at)\s+(.+?)(?:\s+due\b|\s+because\b|\s+as a result\b|\s*\.|$)",
+    re.IGNORECASE,
+)
+STATION_SPLIT_RE = re.compile(r"\s*(?:,\s*(?:and\s+)?|and\s+)\s*", re.IGNORECASE)
 
 MONTH_PATTERN = (
     r"(?:January|February|March|April|May|June|July|August|September|October|November|December)"
@@ -576,7 +612,8 @@ def normalize_rss_item(raw_item: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def fetch_x_posts() -> list[dict[str, Any]]:
+def _try_fetch_x_posts(viewport_width: int = 1280) -> list[dict[str, Any]]:
+    """Single Playwright attempt. Raises RuntimeError on failure or empty result."""
     try:
         from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
         from playwright.sync_api import sync_playwright
@@ -588,7 +625,7 @@ def fetch_x_posts() -> list[dict[str, Any]]:
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context(
             user_agent=USER_AGENT,
-            viewport={"width": 1280, "height": 2400},
+            viewport={"width": viewport_width, "height": 2400},
             locale="en-US",
             timezone_id="Asia/Manila",
         )
@@ -606,7 +643,11 @@ def fetch_x_posts() -> list[dict[str, Any]]:
         except PlaywrightTimeoutError as exc:
             raise RuntimeError("Timed out waiting for public X posts to render.") from exc
 
-        page.wait_for_timeout(3000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=5000)
+        except Exception:
+            pass
+
         tweet_locator = page.locator("article[data-testid='tweet']")
         tweet_count = min(tweet_locator.count(), X_POST_LIMIT)
 
@@ -653,6 +694,64 @@ def fetch_x_posts() -> list[dict[str, Any]]:
         browser.close()
 
     return posts
+
+
+def fetch_x_posts_nitter(session: requests.Session) -> list[dict[str, Any]]:
+    """Fallback: parse Nitter RSS from the first responding instance."""
+    for instance in NITTER_INSTANCES:
+        try:
+            url = f"{instance}/officialLRT1/rss"
+            response = session.get(url, timeout=REQUEST_TIMEOUT)
+            response.raise_for_status()
+            root = ET.fromstring(response.text)
+            posts = []
+            for item_el in root.findall("./channel/item"):
+                link = (item_el.findtext("link") or "").strip()
+                tweet_id_match = re.search(r"/status/(\d+)", link)
+                if not tweet_id_match:
+                    continue
+                tweet_id = tweet_id_match.group(1)
+                x_url = f"https://x.com/officialLRT1/status/{tweet_id}"
+                description_html = item_el.findtext("description") or ""
+                text = strip_html(description_html).strip()
+                if not text:
+                    title = (item_el.findtext("title") or "").strip()
+                    text = re.sub(r"^R @\w+:\s*", "", title)
+                published_at = parse_rss_datetime(item_el.findtext("pubDate"))
+                posts.append({
+                    "source": "x",
+                    "source_id": f"x:{tweet_id}",
+                    "tweet_id": tweet_id,
+                    "published_at": published_at,
+                    "url": x_url,
+                    "text": text,
+                })
+            if posts:
+                log_event("nitter_fetch_success", instance=instance, count=len(posts))
+                return posts
+        except Exception as exc:
+            log_event("nitter_fetch_failed", instance=instance, error=str(exc))
+    return []
+
+
+def fetch_x_posts(session: requests.Session | None = None) -> list[dict[str, Any]]:
+    """Fetch posts with up to 3 Playwright retries, then fall back to Nitter RSS."""
+    viewports = [1280, 1440, 1024]
+    for attempt in range(3):
+        try:
+            posts = _try_fetch_x_posts(viewport_width=viewports[attempt])
+            if posts:
+                return posts
+            log_event("x_fetch_attempt_empty", attempt=attempt + 1)
+        except Exception as exc:
+            log_event("x_fetch_attempt_failed", attempt=attempt + 1, error=str(exc))
+        if attempt < 2:
+            _time.sleep(5)
+
+    log_event("x_fetch_playwright_exhausted", message="Falling back to Nitter RSS")
+    if session is not None:
+        return fetch_x_posts_nitter(session)
+    return []
 
 
 def classify_x_post(raw_post: dict[str, Any]) -> str | None:
@@ -999,20 +1098,107 @@ def format_override_preview_message(item: dict[str, Any], override: dict[str, An
     )
 
 
+def format_disruption_timestamp(value: datetime | None) -> str:
+    """Returns e.g. '10:07 AM, April 16, 2026 (Thursday)'"""
+    dt = (value or datetime.now(PHT)).astimezone(PHT)
+    hour = dt.strftime("%I").lstrip("0") or "12"
+    return f"{hour}:{dt.strftime('%M %p, %B %-d, %Y (%A)')}"
+
+
+def is_partial_disruption(text: str) -> bool:
+    return contains_normalized_keyword(text, PARTIAL_DISRUPTION_SIGNALS)
+
+
+def extract_station_info(text: str) -> dict[str, Any] | None:
+    """Try to extract operating segments or affected stations from tweet text."""
+    # Pattern A: "between X Station and Y Station" (possibly multiple)
+    segments = []
+    for match in SEGMENT_RE.finditer(text):
+        a = match.group(1).strip().rstrip(",")
+        b = match.group(2).strip().rstrip(",")
+        if a and b:
+            segments.append((a, b))
+    if segments:
+        return {"kind": "segments", "segments": segments}
+
+    # Pattern B: "not stopping at / bypassing / no service at ..."
+    match = AFFECTED_STATIONS_RE.search(text)
+    if match:
+        raw = match.group(1).strip().rstrip(".")
+        parts = [s.strip() for s in STATION_SPLIT_RE.split(raw) if s.strip()]
+        # Strip trailing "Station" suffix so we don't double it
+        stations = [re.sub(r"\s+[Ss]tation$", "", p).strip() for p in parts if p]
+        if stations:
+            return {"kind": "affected", "stations": stations}
+
+    return None
+
+
 def format_x_message(item: dict[str, Any]) -> str:
+    kind = item["kind"]
+    published_at = item["published_at"]
+    ts = format_disruption_timestamp(published_at)
+    link = f"🔗 {source_link(item['url'], 'View @officialLRT1 post')}\n⏰ Posted {format_timestamp(published_at)}"
+
+    if kind == "disruption_clear":
+        return (
+            f"✅ <b>Service Restored</b>\n\n"
+            f"As of {ts}, LRT-1 operations have returned to normal.\n\n"
+            f"Thank you for your patience.\n"
+            f"{link}"
+        )
+
+    if kind == "disruption_update":
+        return (
+            f"🔄 <b>Disruption Update</b>\n\n"
+            f"As of {ts}, LRT-1 continues to experience a service disruption.\n\n"
+            f"Further updates will be posted on this channel.\n"
+            f"{link}"
+        )
+
+    if kind == "disruption_start":
+        text = item["text"]
+        if is_partial_disruption(text):
+            station_info = extract_station_info(text)
+            station_block = ""
+            if station_info and station_info["kind"] == "segments":
+                lines = "\n".join(
+                    f"🚉 {a} Station ↔ {b} Station"
+                    for a, b in station_info["segments"]
+                )
+                station_block = f"\nTrains are currently running only between:\n{lines}\n"
+            elif station_info and station_info["kind"] == "affected":
+                lines = "\n".join(
+                    f"🚉 {s} Station"
+                    for s in station_info["stations"]
+                )
+                station_block = f"\nTrains are currently not stopping at:\n{lines}\n"
+            return (
+                f"⚠️ <b>Partial Disruption</b>\n\n"
+                f"As of {ts}, LRT-1 is currently implementing limited operations.\n"
+                f"{station_block}\n"
+                f"Further updates will be posted on this channel.\n"
+                f"{link}"
+            )
+        else:
+            return (
+                f"🚨 <b>Full Service Disruption</b>\n\n"
+                f"As of {ts}, LRT-1 service has been temporarily disrupted.\n\n"
+                f"Further updates will be posted on this channel.\n"
+                f"{link}"
+            )
+
+    # Crowd alerts keep the tweet text
     title = {
-        "disruption_start": "🚨 <b>LRT-1 disruption alert</b>",
-        "disruption_update": "🔄 <b>LRT-1 disruption update</b>",
-        "disruption_clear": "✅ <b>LRT-1 operations normalized</b>",
         "crowd_alert_high": "🚨 <b>Vito Cruz crowd alert</b>",
         "crowd_alert_moderate": "⚠️ <b>Vito Cruz crowd update</b>",
-    }[item["kind"]]
+    }[kind]
     text = html.escape(truncate_text(item["text"]))
     return (
         f"{title}\n\n"
         f"{text}\n\n"
         f"🔗 {source_link(item['url'], 'View @officialLRT1 post')}\n"
-        f"⏰ Posted {format_timestamp(item['published_at'])}"
+        f"⏰ Posted {format_timestamp(published_at)}"
     )
 
 
@@ -1079,41 +1265,42 @@ def process_x_items(state: dict[str, Any], x_items: list[dict[str, Any]]) -> lis
             continue
 
         if item["kind"] == "disruption_clear":
-            if state.get("active_disruption"):
-                state["active_disruption"] = None
-                messages.append(format_x_message(item))
+            state["active_disruption"] = None
+            messages.append(format_x_message(item))
 
     return messages
 
 
-def main() -> None:
+def main(fast: bool = False) -> None:
     now = datetime.now(PHT)
-    print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Checking official LRT-1 announcements...")
+    mode = "fast" if fast else "full"
+    print(f"[{now.strftime('%Y-%m-%d %H:%M')}] Checking official LRT-1 announcements... (mode={mode})")
 
     state = load_state()
     session = build_session()
 
     raw_rss_items: list[dict[str, Any]] = []
     rss_items: list[dict[str, Any]] = []
-    try:
-        raw_rss_items = fetch_lrmc_rss_items(session)
-        rss_items = [item for item in (normalize_rss_item(raw_item) for raw_item in raw_rss_items) if item]
-        merge_schedule_overrides(state, rss_items, now.date())
-        log_event(
-            "rss_fetch",
-            raw_count=len(raw_rss_items),
-            relevant_count=len(rss_items),
-            latest=raw_rss_items[0]["source_id"] if raw_rss_items else None,
-        )
-    except Exception as exc:
-        log_event("rss_failure", error=str(exc))
+    if not fast:
+        try:
+            raw_rss_items = fetch_lrmc_rss_items(session)
+            rss_items = [item for item in (normalize_rss_item(raw_item) for raw_item in raw_rss_items) if item]
+            merge_schedule_overrides(state, rss_items, now.date())
+            log_event(
+                "rss_fetch",
+                raw_count=len(raw_rss_items),
+                relevant_count=len(rss_items),
+                latest=raw_rss_items[0]["source_id"] if raw_rss_items else None,
+            )
+        except Exception as exc:
+            log_event("rss_failure", error=str(exc))
 
     schedule = get_service_schedule(now, state)
     state["current_schedule_override"] = schedule.get("override")
 
     x_items: list[dict[str, Any]] = []
     try:
-        raw_x_posts = fetch_x_posts()
+        raw_x_posts = fetch_x_posts(session=session)
         x_items = [item for item in (normalize_x_post(raw_post) for raw_post in raw_x_posts) if item]
         log_event(
             "x_fetch",
@@ -1127,10 +1314,12 @@ def main() -> None:
     messages = []
     messages.extend(process_rss_items(state, rss_items, now.date()))
     messages.extend(process_x_items(state, x_items))
-    messages.extend(check_announcements(state, now, schedule))
+    if not fast:
+        messages.extend(check_announcements(state, now, schedule))
 
     log_event(
         "run_summary",
+        mode=mode,
         message_count=len(messages),
         active_disruption=state.get("active_disruption"),
         current_schedule_override=state.get("current_schedule_override"),
@@ -1143,4 +1332,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(fast="--fast" in sys.argv)
