@@ -89,6 +89,7 @@ SOURCE_HEADERS = {
 STATE_DEFAULTS = {
     "posted_item_ids": [],
     "active_disruption": None,
+    "active_flood": None,
     "current_schedule_override": None,
     "schedule_overrides": [],
     "last_seen_rss_item_id": None,
@@ -201,6 +202,33 @@ X_CROWD_MODERATE_KEYWORDS = (
     "passenger load",
     "passenger volume",
     "foot traffic",
+)
+
+X_FLOOD_KEYWORDS = (
+    "flood",
+    "flooding",
+    "flooded",
+    "impassable",
+    "flash flood",
+    "water level",
+    "heavy rain",
+    "heavy rainfall",
+    "typhoon",
+    "inclement weather",
+    "storm surge",
+)
+
+X_FLOOD_CLEAR_KEYWORDS = (
+    "now passable",
+    "is now passable",
+    "road is passable",
+    "area is passable",
+    "flood receded",
+    "flood has receded",
+    "area is now accessible",
+    "area has been cleared",
+    "flood cleared",
+    "flood alert lifted",
 )
 
 PARTIAL_DISRUPTION_SIGNALS = (
@@ -764,6 +792,10 @@ def classify_x_post(raw_post: dict[str, Any]) -> str | None:
             return "crowd_alert_high"
         if contains_normalized_keyword(normalized, X_CROWD_MODERATE_KEYWORDS):
             return "crowd_alert_moderate"
+    if contains_normalized_keyword(normalized, X_FLOOD_CLEAR_KEYWORDS):
+        return "flood_clear"
+    if contains_normalized_keyword(normalized, X_FLOOD_KEYWORDS):
+        return "flood_alert"
     if contains_normalized_keyword(normalized, X_CLEAR_KEYWORDS):
         return "disruption_clear"
     if contains_normalized_keyword(normalized, X_DISRUPTION_KEYWORDS):
@@ -1001,7 +1033,10 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
         outlook = format_weekly_outlook(now, state)
         if outlook:
             messages.append(outlook)
-        messages.append(format_opening_message(get_daily_message(OPENING_MESSAGES), schedule))
+        opening_msg = format_opening_message(get_daily_message(OPENING_MESSAGES), schedule)
+        if state.get("active_flood"):
+            opening_msg += "\n\n⚠️ Reminder: Flooding has been reported near an LRT-1 station. Please exercise caution and stay safe."
+        messages.append(opening_msg)
         state["last_opening"] = today_string
 
     is_weekday_non_holiday = now.weekday() < 5 and not is_public_holiday(now.date())
@@ -1038,6 +1073,8 @@ def check_announcements(state: dict[str, Any], now: datetime, schedule: dict[str
         note = format_tomorrow_schedule_note(tomorrow_date, tomorrow_schedule)
         if note:
             closing_msg += f"\n\n{note}"
+        if state.get("active_flood"):
+            closing_msg += "\n\n⚠️ Flooding has been reported near an LRT-1 station. Stay safe on your way home tonight."
         messages.append(closing_msg)
         state["last_closing"] = today_string
 
@@ -1139,6 +1176,23 @@ def format_x_message(item: dict[str, Any]) -> str:
     published_at = item["published_at"]
     ts = format_disruption_timestamp(published_at)
     link = f"🔗 {source_link(item['url'], 'View @officialLRT1 post')}\n⏰ Posted {format_timestamp(published_at)}"
+
+    if kind == "flood_alert":
+        return (
+            f"🌧️ <b>Flood Alert</b>\n\n"
+            f"As of {ts}, flooding has been reported near an LRT-1 station. "
+            f"Access to the station may be difficult or impassable.\n\n"
+            f"Please exercise caution and plan your commute accordingly. Stay safe.\n"
+            f"{link}"
+        )
+
+    if kind == "flood_clear":
+        return (
+            f"✅ <b>Flood Alert Lifted</b>\n\n"
+            f"As of {ts}, the affected area has been cleared and access to LRT-1 stations has been restored.\n\n"
+            f"Thank you for your patience. Continue to exercise caution.\n"
+            f"{link}"
+        )
 
     if kind == "disruption_clear":
         return (
@@ -1242,6 +1296,10 @@ def process_x_items(state: dict[str, Any], x_items: list[dict[str, Any]]) -> lis
                 state["active_disruption"] = item["source_id"]
             elif item["kind"] == "disruption_clear":
                 state["active_disruption"] = None
+            elif item["kind"] == "flood_alert":
+                state["active_flood"] = item["source_id"]
+            elif item["kind"] == "flood_clear":
+                state["active_flood"] = None
         state["x_bootstrapped"] = True
         return []
 
@@ -1266,6 +1324,16 @@ def process_x_items(state: dict[str, Any], x_items: list[dict[str, Any]]) -> lis
 
         if item["kind"] == "disruption_clear":
             state["active_disruption"] = None
+            messages.append(format_x_message(item))
+            continue
+
+        if item["kind"] == "flood_alert":
+            state["active_flood"] = item["source_id"]
+            messages.append(format_x_message(item))
+            continue
+
+        if item["kind"] == "flood_clear":
+            state["active_flood"] = None
             messages.append(format_x_message(item))
 
     return messages
@@ -1322,6 +1390,7 @@ def main(fast: bool = False) -> None:
         mode=mode,
         message_count=len(messages),
         active_disruption=state.get("active_disruption"),
+        active_flood=state.get("active_flood"),
         current_schedule_override=state.get("current_schedule_override"),
     )
 
