@@ -245,13 +245,6 @@ PARTIAL_DISRUPTION_SIGNALS = (
     "suspended at",
 )
 
-NITTER_INSTANCES = (
-    "https://nitter.privacydev.net",
-    "https://nitter.poast.org",
-    "https://nitter.cz",
-    "https://nitter.1d4.us",
-)
-
 SEGMENT_RE = re.compile(
     r"(?:running only |operating )?between\s+(.+?)\s+station\s+(?:and|to|-)\s+(.+?)\s+station",
     re.IGNORECASE,
@@ -724,46 +717,8 @@ def _try_fetch_x_posts(viewport_width: int = 1280) -> list[dict[str, Any]]:
     return posts
 
 
-def fetch_x_posts_nitter(session: requests.Session) -> list[dict[str, Any]]:
-    """Fallback: parse Nitter RSS from the first responding instance."""
-    for instance in NITTER_INSTANCES:
-        try:
-            url = f"{instance}/officialLRT1/rss"
-            response = session.get(url, timeout=REQUEST_TIMEOUT)
-            response.raise_for_status()
-            root = ET.fromstring(response.text)
-            posts = []
-            for item_el in root.findall("./channel/item"):
-                link = (item_el.findtext("link") or "").strip()
-                tweet_id_match = re.search(r"/status/(\d+)", link)
-                if not tweet_id_match:
-                    continue
-                tweet_id = tweet_id_match.group(1)
-                x_url = f"https://x.com/officialLRT1/status/{tweet_id}"
-                description_html = item_el.findtext("description") or ""
-                text = strip_html(description_html).strip()
-                if not text:
-                    title = (item_el.findtext("title") or "").strip()
-                    text = re.sub(r"^R @\w+:\s*", "", title)
-                published_at = parse_rss_datetime(item_el.findtext("pubDate"))
-                posts.append({
-                    "source": "x",
-                    "source_id": f"x:{tweet_id}",
-                    "tweet_id": tweet_id,
-                    "published_at": published_at,
-                    "url": x_url,
-                    "text": text,
-                })
-            if posts:
-                log_event("nitter_fetch_success", instance=instance, count=len(posts))
-                return posts
-        except Exception as exc:
-            log_event("nitter_fetch_failed", instance=instance, error=str(exc))
-    return []
-
-
 def fetch_x_posts(session: requests.Session | None = None) -> list[dict[str, Any]]:
-    """Fetch posts with up to 3 Playwright retries, then fall back to Nitter RSS."""
+    """Fetch posts with up to 3 Playwright retries, then fail closed."""
     viewports = [1280, 1440, 1024]
     for attempt in range(3):
         try:
@@ -776,9 +731,7 @@ def fetch_x_posts(session: requests.Session | None = None) -> list[dict[str, Any
         if attempt < 2:
             _time.sleep(5)
 
-    log_event("x_fetch_playwright_exhausted", message="Falling back to Nitter RSS")
-    if session is not None:
-        return fetch_x_posts_nitter(session)
+    log_event("x_fetch_playwright_exhausted", message="Skipping X sync because no verified source is available")
     return []
 
 

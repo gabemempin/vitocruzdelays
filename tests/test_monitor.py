@@ -141,6 +141,13 @@ class MonitorTests(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIsNone(state["active_disruption"])
 
+    @patch("monitor._time.sleep")
+    @patch("monitor._try_fetch_x_posts", side_effect=RuntimeError("x scrape failed"))
+    def test_fetch_x_posts_fails_closed_after_playwright_retries(self, mock_fetch, mock_sleep):
+        posts = monitor.fetch_x_posts(session=monitor.build_session())
+        self.assertEqual(posts, [])
+        self.assertEqual(mock_fetch.call_count, 3)
+
     def test_closing_message_suppressed_on_closed_day(self):
         state = monitor.STATE_DEFAULTS.copy()
         schedule = {"name": "closed", "closed": True, "reason": "Test", "override": None}
