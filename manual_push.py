@@ -2,13 +2,16 @@
 """
 manual_push.py — Manually push a tweet announcement to @vitocruzdelays.
 
-Usage:
-    python manual_push.py [tweet_url]
-    python manual_push.py --dry-run [tweet_url]
+Interactive usage (terminal):
+    python manual_push.py
+
+Non-interactive usage (Claude Code slash command):
+    python manual_push.py --url URL --text-file FILE [--kind KIND] [--dry-run] [--yes]
 
 Set TELEGRAM_BOT_TOKEN before running. TELEGRAM_CHANNEL defaults to @vitocruzdelays.
 """
 
+import argparse
 import re
 import sys
 from datetime import datetime
@@ -40,7 +43,14 @@ def extract_tweet_id(url: str) -> str | None:
     return match.group(1) if match else None
 
 
-def prompt_tweet_text() -> str:
+def run_interactive() -> None:
+    url = input("Paste the tweet URL: ").strip()
+    tweet_id = extract_tweet_id(url)
+    if not tweet_id:
+        print("Error: Could not extract tweet ID from URL.")
+        sys.exit(1)
+    url = f"https://x.com/officialLRT1/status/{tweet_id}"
+
     print("Paste the tweet text below. Press Enter twice when done:")
     lines = []
     while True:
@@ -51,10 +61,20 @@ def prompt_tweet_text() -> str:
         if line == "" and lines:
             break
         lines.append(line)
-    return "\n".join(lines).strip()
+    tweet_text = "\n".join(lines).strip()
+    if not tweet_text:
+        print("Error: No tweet text provided.")
+        sys.exit(1)
 
+    now = datetime.now(PHT)
+    raw_post = {"source": "x", "source_id": f"x_{tweet_id}", "published_at": now, "url": url, "text": tweet_text}
+    auto_kind = classify_x_post(raw_post)
 
-def prompt_kind(auto_kind: str | None) -> str | None:
+    if auto_kind:
+        print(f"\nAuto-detected category: {auto_kind}")
+    else:
+        print("\nCould not auto-detect a category from the tweet text.")
+
     print("\nAvailable categories:")
     for i, kind in enumerate(KINDS, 1):
         marker = " ← auto-detected" if kind == auto_kind else ""
@@ -63,56 +83,49 @@ def prompt_kind(auto_kind: str | None) -> str | None:
 
     default = str(KINDS.index(auto_kind) + 1) if auto_kind else ""
     prompt = f"\nChoose category [{default}]: " if default else "\nChoose category: "
-
     choice = input(prompt).strip().lower()
+
     if choice == "s":
-        return None
+        print("Cancelled.")
+        return
     if choice == "" and auto_kind:
-        return auto_kind
-    if choice.isdigit() and 1 <= int(choice) <= len(KINDS):
-        return KINDS[int(choice) - 1]
-    print("Invalid choice.")
-    sys.exit(1)
+        kind = auto_kind
+    elif choice.isdigit() and 1 <= int(choice) <= len(KINDS):
+        kind = KINDS[int(choice) - 1]
+    else:
+        print("Invalid choice.")
+        sys.exit(1)
+
+    _send(url, tweet_id, tweet_text, kind, now, dry_run=False, yes=False)
 
 
-def main() -> None:
-    args = sys.argv[1:]
-    dry_run = "--dry-run" in args
-    args = [a for a in args if a != "--dry-run"]
-
-    url = args[0].strip() if args else input("Paste the tweet URL: ").strip()
-
+def run_noninteractive(url: str, tweet_text: str, kind_override: str | None, dry_run: bool, yes: bool) -> None:
     tweet_id = extract_tweet_id(url)
     if not tweet_id:
         print("Error: Could not extract tweet ID from URL.")
         sys.exit(1)
-
     url = f"https://x.com/officialLRT1/status/{tweet_id}"
-    tweet_text = prompt_tweet_text()
-
-    if not tweet_text:
-        print("Error: No tweet text provided.")
-        sys.exit(1)
 
     now = datetime.now(PHT)
-    raw_post = {
-        "source": "x",
-        "source_id": f"x_{tweet_id}",
-        "published_at": now,
-        "url": url,
-        "text": tweet_text,
-    }
-
+    raw_post = {"source": "x", "source_id": f"x_{tweet_id}", "published_at": now, "url": url, "text": tweet_text}
     auto_kind = classify_x_post(raw_post)
-    if auto_kind:
-        print(f"\nAuto-detected category: {auto_kind}")
-    else:
-        print("\nCould not auto-detect a category from the tweet text.")
+    kind = kind_override or auto_kind
 
-    kind = prompt_kind(auto_kind)
-    if kind is None:
-        print("Cancelled.")
-        return
+    if not kind:
+        print("DETECTED_KIND: none")
+        print("Could not auto-detect a category. Specify --kind explicitly.")
+        sys.exit(1)
+
+    print(f"DETECTED_KIND: {kind}")
+    _send(url, tweet_id, tweet_text, kind, now, dry_run=dry_run, yes=yes)
+
+
+def _send(url: str, tweet_id: str, tweet_text: str, kind: str, now: datetime, dry_run: bool, yes: bool) -> None:
+    state = load_state()
+
+    if kind == "disruption_start" and state.get("active_disruption"):
+        print("Note: active_disruption is already set — sending as disruption_update.")
+        kind = "disruption_update"
 
     item = {
         "source": "x",
@@ -125,39 +138,31 @@ def main() -> None:
         "effective_window": None,
     }
 
-    state = load_state()
-    if has_posted_item(state, item["source_id"]):
-        print(f"\nWarning: Tweet {tweet_id} was already posted.")
-        if input("Post again anyway? [y/N]: ").strip().lower() != "y":
-            print("Cancelled.")
-            return
-
-    if kind == "disruption_start" and state.get("active_disruption"):
-        print("\nNote: active_disruption is already set in state.")
-        print("The message will be formatted as a disruption_update.")
-        if input("Proceed? [y/N]: ").strip().lower() != "y":
-            print("Cancelled.")
-            return
-        item["kind"] = "disruption_update"
+    already_posted = has_posted_item(state, item["source_id"])
+    if already_posted:
+        print(f"Warning: Tweet {tweet_id} was already posted.")
+        if not yes:
+            if input("Post again anyway? [y/N]: ").strip().lower() != "y":
+                print("Cancelled.")
+                return
 
     message = format_x_message(item)
     print("\n--- Message preview ---")
     print(message)
-    print("-----------------------\n")
+    print("-----------------------")
 
     if dry_run:
-        print("[dry-run] Message not sent. State not updated.")
+        print("\n[dry-run] Message not sent. State not updated.")
         return
 
-    if input("Send to Telegram? [y/N]: ").strip().lower() != "y":
-        print("Cancelled.")
-        return
+    if not yes:
+        if input("\nSend to Telegram? [y/N]: ").strip().lower() != "y":
+            print("Cancelled.")
+            return
 
     remember_posted_item(state, item["source_id"])
     if kind == "disruption_start":
         state["active_disruption"] = item["source_id"]
-    elif kind == "disruption_update":
-        pass
     elif kind == "disruption_clear":
         state["active_disruption"] = None
     elif kind == "flood_alert":
@@ -167,7 +172,30 @@ def main() -> None:
 
     send_telegram(message)
     save_state(state)
-    print("Done! Announcement sent and state updated.")
+    print("\nDone! Announcement sent and state updated.")
+
+
+def main() -> None:
+    if len(sys.argv) == 1:
+        run_interactive()
+        return
+
+    parser = argparse.ArgumentParser(description="Manually push an LRT-1 tweet announcement to Telegram.")
+    parser.add_argument("--url", required=True, help="Tweet URL")
+    parser.add_argument("--text-file", required=True, metavar="FILE", help="Path to file containing tweet text")
+    parser.add_argument("--kind", choices=KINDS, help="Override the auto-detected category")
+    parser.add_argument("--dry-run", action="store_true", help="Preview only, do not send")
+    parser.add_argument("--yes", action="store_true", help="Skip confirmation prompts")
+    args = parser.parse_args()
+
+    with open(args.text_file, encoding="utf-8") as f:
+        tweet_text = f.read().strip()
+
+    if not tweet_text:
+        print("Error: Tweet text file is empty.")
+        sys.exit(1)
+
+    run_noninteractive(args.url, tweet_text, args.kind, args.dry_run, args.yes)
 
 
 if __name__ == "__main__":
