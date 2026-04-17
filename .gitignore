@@ -11,4 +11,3 @@ venv/
 env/
 state.json
 AGENTS.md
-.claude/settings.local.json
