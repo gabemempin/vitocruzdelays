@@ -130,7 +130,7 @@ WEEKEND_OR_HOLIDAY_SERVICE = {
     "name": "weekend_or_holiday",
     "first_train": time(5, 0),
     "last_train": time(21, 45),
-    "closing_announcement": time(21, 0),  # 45 min before last train; 35-min window → fires 21:00–21:35
+    "closing_announcement": time(20, 30),  # 75 min before last train; 65-min window → fires 20:30–21:35
 }
 
 RSS_GATE_KEYWORDS = (

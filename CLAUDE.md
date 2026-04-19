@@ -57,7 +57,7 @@ The state file is the bot's memory between runs. Key fields:
 
 - Weekday: first train 04:30, last train 22:45, closing announcement **21:30**
 - Weekend/holiday: first train 05:00, last train 21:45, closing announcement **21:00**
-- The closing window runs from `closing_announcement` to `last_train − 10 min`: weekday 21:30–22:35 (65 min), weekend 21:00–21:35 (35 min). This maximizes resilience to GitHub Actions scheduling gaps while never firing after the last train.
+- The closing window runs from `closing_announcement` to `last_train − 10 min`: weekday 21:30–22:35 (65 min), weekend 20:30–21:35 (65 min). This maximizes resilience to GitHub Actions scheduling gaps while never firing after the last train.
 
 ## Message rotation
 
