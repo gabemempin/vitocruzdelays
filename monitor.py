@@ -15,6 +15,10 @@ import requests
 
 PHT = ZoneInfo("Asia/Manila")
 
+# Temporarily pause all outgoing messages while reliability issues are investigated.
+# Set to False to resume normal operation.
+PAUSED = True
+
 OPENING_MESSAGES = [
     "🚃 Good morning! LRT-1 Vito Cruz is now open. Stay sharp and have a safe commute!",
     "🌅 Rise and ride, commuters! Vito Cruz station is open and trains are running. Have a great one!",
@@ -1346,6 +1350,11 @@ def main(fast: bool = False) -> None:
         active_flood=state.get("active_flood"),
         current_schedule_override=state.get("current_schedule_override"),
     )
+
+    if PAUSED:
+        print("Bot is paused — skipping all outgoing messages.")
+        save_state(state)
+        return
 
     for message in messages:
         send_telegram(message)
